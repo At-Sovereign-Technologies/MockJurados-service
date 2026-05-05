@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: mock-jurados
+  jackson:
+    time-zone: America/Bogota
+
+server:
+  port: ${PUERTO:8083}
+
+# CORS: lista de orígenes separados por coma. Usa "*" para permitir todos (solo en desarrollo).
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,https://preeleccion.sello-legitimo.site:8091,https://eleccion.sello-legitimo.site}
+
+logging:
+  level:
+    root: INFO
+    com.selloLegitimo.MockJurados: DEBUG
+
+grpc:
+  server:
+    port: ${GRPC_PORT:9091}
+  elecciones:
+    host: ${ELECCIONES_GRPC_HOST:localhost}
+    port: ${ELECCIONES_GRPC_PORT:9090}

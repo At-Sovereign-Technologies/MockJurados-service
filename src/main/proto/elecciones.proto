@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package elecciones;
+
+option java_package = "com.selloLegitimo.grpc.elecciones";
+option java_outer_classname = "EleccionesProto";
+option java_multiple_files = true;
+
+service EleccionService {
+  rpc ListarElecciones (ListarEleccionesRequest) returns (ListarEleccionesResponse);
+  rpc ObtenerEleccion (ObtenerEleccionRequest) returns (EleccionDetalle);
+}
+
+message ListarEleccionesRequest {}
+
+message ListarEleccionesResponse {
+  repeated EleccionResumen elecciones = 1;
+}
+
+message EleccionResumen {
+  int64 id = 1;
+  string nombre_oficial = 2;
+  string estado = 3;
+}
+
+message ObtenerEleccionRequest {
+  int64 id = 1;
+}
+
+message EleccionDetalle {
+  int64 id = 1;
+  string nombre_oficial = 2;
+  string estado = 3;
+  string fecha_inicio_jornada = 4;
+  string fecha_cierre_jornada = 5;
+  string documento_no_votable = 6;
+  repeated string excenciones_habilitadas = 7;
+}

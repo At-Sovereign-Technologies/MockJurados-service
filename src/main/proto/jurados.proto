@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package jurados;
+
+option java_package = "com.selloLegitimo.grpc.jurados";
+option java_outer_classname = "JuradosProto";
+option java_multiple_files = true;
+
+service JuradoService {
+  rpc ConsultarJuradosPorMesa (ConsultarJuradosPorMesaRequest) returns (ConsultarJuradosPorMesaResponse);
+  rpc ConsultarJuradoPorCedula (ConsultarJuradoPorCedulaRequest) returns (JuradoDetalle);
+  rpc ConsultarAsistenciaPorMesa (ConsultarAsistenciaPorMesaRequest) returns (ConsultarAsistenciaPorMesaResponse);
+  rpc SuscribirEventos (SuscribirEventosRequest) returns (stream EventoJurado);
+}
+
+message ConsultarJuradosPorMesaRequest {
+  string mesa_id = 1;
+}
+
+message ConsultarJuradosPorMesaResponse {
+  repeated JuradoDetalle jurados = 1;
+}
+
+message ConsultarJuradoPorCedulaRequest {
+  string cedula = 1;
+}
+
+message JuradoDetalle {
+  string id = 1;
+  string cedula = 2;
+  string nombre = 3;
+  string apellido = 4;
+  string mesa_id = 5;
+  string puesto_id = 6;
+  string rol = 7;
+  string estado = 8;
+}
+
+message ConsultarAsistenciaPorMesaRequest {
+  string mesa_id = 1;
+}
+
+message ConsultarAsistenciaPorMesaResponse {
+  repeated AsistenciaDetalle asistencias = 1;
+}
+
+message AsistenciaDetalle {
+  string id = 1;
+  string jurado_id = 2;
+  string mesa_id = 3;
+  string estado = 4;
+  string fecha_registro = 5;
+}
+
+message SuscribirEventosRequest {}
+
+message EventoJurado {
+  string id = 1;
+  string tipo = 2;
+  string payload = 3;
+  string fecha_emision = 4;
+}
