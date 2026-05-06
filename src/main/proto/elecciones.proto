@@ -35,4 +35,8 @@ message EleccionDetalle {
   string fecha_cierre_jornada = 5;
   string documento_no_votable = 6;
   repeated string excenciones_habilitadas = 7;
+  string fecha_inicio_mod_candidaturas = 8;
+  string fecha_fin_mod_candidaturas = 9;
+  string fecha_limite_reemplazo_candidaturas = 10;
+  int32 edad_minima_candidatura = 11;
 }
