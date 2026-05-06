@@ -2,11 +2,12 @@ package com.selloLegitimo.MockJurados.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 public class SolicitudSorteoDto {
 
-    @NotBlank(message = "El ID de la eleccion es obligatorio")
-    private String eleccionId;
+    @NotNull(message = "El ID de la eleccion es obligatorio")
+    private Long eleccionId;
 
     @NotBlank(message = "El departamento es obligatorio")
     private String departamento;
@@ -22,8 +23,8 @@ public class SolicitudSorteoDto {
 
     private long seed;
 
-    public String getEleccionId() { return eleccionId; }
-    public void setEleccionId(String eleccionId) { this.eleccionId = eleccionId; }
+    public Long getEleccionId() { return eleccionId; }
+    public void setEleccionId(Long eleccionId) { this.eleccionId = eleccionId; }
 
     public String getDepartamento() { return departamento; }
     public void setDepartamento(String departamento) { this.departamento = departamento; }

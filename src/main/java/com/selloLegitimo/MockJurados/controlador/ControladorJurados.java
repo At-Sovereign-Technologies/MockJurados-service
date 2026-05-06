@@ -4,6 +4,10 @@ import com.selloLegitimo.MockJurados.dto.*;
 import com.selloLegitimo.MockJurados.servicio.IServicioAsistencia;
 import com.selloLegitimo.MockJurados.servicio.IServicioExcusa;
 import com.selloLegitimo.MockJurados.servicio.IServicioJurados;
+import com.selloLegitimo.MockJurados.grpc.GrpcConfiguracionClient;
+import com.selloLegitimo.grpc.elecciones.ListarEleccionesRequest;
+import com.selloLegitimo.grpc.elecciones.ListarEleccionesResponse;
+import com.selloLegitimo.grpc.elecciones.EleccionServiceGrpc;
 
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -21,13 +25,16 @@ public class ControladorJurados {
     private final IServicioJurados servicioJurados;
     private final IServicioExcusa servicioExcusa;
     private final IServicioAsistencia servicioAsistencia;
+    private final GrpcConfiguracionClient grpcConfiguracionClient;
 
     public ControladorJurados(IServicioJurados servicioJurados,
                               IServicioExcusa servicioExcusa,
-                              IServicioAsistencia servicioAsistencia) {
+                              IServicioAsistencia servicioAsistencia,
+                              GrpcConfiguracionClient grpcConfiguracionClient) {
         this.servicioJurados = servicioJurados;
         this.servicioExcusa = servicioExcusa;
         this.servicioAsistencia = servicioAsistencia;
+        this.grpcConfiguracionClient = grpcConfiguracionClient;
     }
 
     @PostMapping("/sorteo")
@@ -80,5 +87,33 @@ public class ControladorJurados {
     @GetMapping("/{id}")
     public ResponseEntity<RespuestaJuradoDto> consultarPorId(@PathVariable String id) {
         return ResponseEntity.ok(servicioJurados.buscarPorId(id));
+    }
+
+    @GetMapping("/elecciones")
+    public ResponseEntity<java.util.List<java.util.Map<String, Object>>> listarElecciones() {
+        try {
+            EleccionServiceGrpc.EleccionServiceBlockingStub stub = grpcConfiguracionClient.eleccionServiceStub();
+            ListarEleccionesResponse respuesta = stub.listarElecciones(ListarEleccionesRequest.newBuilder().build());
+            var elecciones = respuesta.getEleccionesList().stream()
+                    .map(e -> {
+                        java.util.Map<String, Object> map = new java.util.HashMap<>();
+                        map.put("id", e.getId());
+                        map.put("nombreOficial", e.getNombreOficial());
+                        map.put("estado", e.getEstado());
+                        return map;
+                    })
+                    .toList();
+            return ResponseEntity.ok(elecciones);
+        } catch (Exception e) {
+            log.warn("No se pudo listar elecciones via gRPC: {}", e.getMessage());
+            return ResponseEntity.ok(java.util.List.of());
+        }
+    }
+
+    @GetMapping("/elecciones/{eleccionId}")
+    public ResponseEntity<java.util.List<RespuestaJuradoDto>> listarPorEleccion(
+            @PathVariable Long eleccionId) {
+        log.info("GET /api/jurados/elecciones/{}", eleccionId);
+        return ResponseEntity.ok(servicioJurados.listarPorEleccion(eleccionId));
     }
 }

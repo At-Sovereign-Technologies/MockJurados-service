@@ -51,6 +51,22 @@ public class RepositorioJurado {
         return store.values().stream().anyMatch(j -> cedula.equals(j.getCedula()));
     }
 
+    public List<Jurado> buscarPorEleccion(Long eleccionId) {
+        List<Jurado> resultado = new ArrayList<>();
+        for (Jurado j : store.values()) {
+            if (eleccionId.equals(j.getEleccionId())) {
+                resultado.add(j);
+            }
+        }
+        return resultado;
+    }
+
+    public boolean existeCedulaEnEleccion(String cedula, Long eleccionId) {
+        return store.values().stream()
+                .anyMatch(j -> cedula.equals(j.getCedula())
+                        && eleccionId.equals(j.getEleccionId()));
+    }
+
     public long contar() {
         return store.size();
     }

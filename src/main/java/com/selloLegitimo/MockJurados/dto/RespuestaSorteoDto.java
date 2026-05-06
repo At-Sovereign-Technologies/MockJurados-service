@@ -4,7 +4,7 @@ import java.util.List;
 
 public class RespuestaSorteoDto {
 
-    private String eleccionId;
+    private Long eleccionId;
     private String departamento;
     private String municipio;
     private long seed;
@@ -12,8 +12,8 @@ public class RespuestaSorteoDto {
     private int totalJurados;
     private List<RespuestaMesaDto> mesas;
 
-    public String getEleccionId() { return eleccionId; }
-    public void setEleccionId(String eleccionId) { this.eleccionId = eleccionId; }
+    public Long getEleccionId() { return eleccionId; }
+    public void setEleccionId(Long eleccionId) { this.eleccionId = eleccionId; }
 
     public String getDepartamento() { return departamento; }
     public void setDepartamento(String departamento) { this.departamento = departamento; }

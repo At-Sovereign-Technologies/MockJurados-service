@@ -13,8 +13,10 @@ logging:
     com.selloLegitimo.MockJurados: DEBUG
 
 grpc:
-  server:
-    port: ${GRPC_PORT:9091}
   elecciones:
     host: ${ELECCIONES_GRPC_HOST:localhost}
     port: ${ELECCIONES_GRPC_PORT:9090}
+
+censo:
+  service:
+    url: ${CENSO_SERVICE_URL:}

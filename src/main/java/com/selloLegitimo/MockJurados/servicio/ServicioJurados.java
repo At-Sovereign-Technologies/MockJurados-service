@@ -1,9 +1,12 @@
 package com.selloLegitimo.MockJurados.servicio;
 
+import com.selloLegitimo.MockJurados.client.ClienteCensoElectoral;
+import com.selloLegitimo.MockJurados.client.ClienteCensoElectoral.CiudadanoCensoDto;
 import com.selloLegitimo.MockJurados.modelo.enums.RolJurado;
 import com.selloLegitimo.MockJurados.util.GeneradorDeterministico;
+import com.selloLegitimo.MockJurados.grpc.GrpcConfiguracionClient;
+import com.selloLegitimo.grpc.elecciones.EleccionDetalle;
 import com.selloLegitimo.MockJurados.dto.*;
-import com.selloLegitimo.MockJurados.excepcion.ExcepcionReglaNegocio;
 import com.selloLegitimo.MockJurados.modelo.Jurado;
 import com.selloLegitimo.MockJurados.modelo.Mesa;
 import com.selloLegitimo.MockJurados.repositorio.RepositorioJurado;
@@ -34,30 +37,73 @@ public class ServicioJurados implements IServicioJurados {
     private final RepositorioMesa repositorioMesa;
     private final GeneradorDeterministico generador;
     private final ServicioOutbox servicioOutbox;
+    private final ClienteCensoElectoral clienteCenso;
+    private final GrpcConfiguracionClient grpcConfiguracionClient;
 
     public ServicioJurados(RepositorioJurado repositorioJurado,
                            RepositorioMesa repositorioMesa,
                            GeneradorDeterministico generador,
-                           ServicioOutbox servicioOutbox) {
+                           ServicioOutbox servicioOutbox,
+                           ClienteCensoElectoral clienteCenso,
+                           GrpcConfiguracionClient grpcConfiguracionClient) {
         this.repositorioJurado = repositorioJurado;
         this.repositorioMesa = repositorioMesa;
         this.generador = generador;
         this.servicioOutbox = servicioOutbox;
+        this.clienteCenso = clienteCenso;
+        this.grpcConfiguracionClient = grpcConfiguracionClient;
     }
 
     @Override
     public RespuestaSorteoDto realizarSorteo(SolicitudSorteoDto solicitud) {
+        Long eleccionId = solicitud.getEleccionId();
+
+        EleccionDetalle eleccionValidada = grpcConfiguracionClient.validarEleccion(eleccionId);
+        if (eleccionValidada == null) {
+            throw new com.selloLegitimo.MockJurados.excepcion.ExcepcionReglaNegocio(
+                    "La eleccion con ID " + eleccionId + " no existe o no pudo ser validada");
+        }
+
         int juradosPorMesa = solicitud.getJuradosPorMesa() > 0
                 ? solicitud.getJuradosPorMesa()
                 : JURADOS_POR_MESA_POR_DEFECTO;
 
-        log.info("Iniciando sorteo: eleccion={}, depto={}, municipio={}, mesas={}, seed={}",
-                solicitud.getEleccionId(), solicitud.getDepartamento(),
+        log.info("Iniciando sorteo: eleccion={} ({}) depto={}, municipio={}, mesas={}, seed={}",
+                eleccionId, eleccionValidada.getNombreOficial(), solicitud.getDepartamento(),
                 solicitud.getMunicipio(), solicitud.getNumeroMesas(), solicitud.getSeed());
+
+        List<CiudadanoCensoDto> ciudadanosCenso = List.of();
+        boolean usarCenso = false;
+
+        if (clienteCenso.isDisponible()) {
+            try {
+                ciudadanosCenso = clienteCenso.obtenerCiudadanosHabilitados(
+                        eleccionId, solicitud.getDepartamento(), solicitud.getMunicipio());
+
+                List<String> candidatosEnEleccion = clienteCenso.obtenerCandidatosEnEleccion(eleccionId);
+                Set<String> candidatosSet = new java.util.HashSet<>(candidatosEnEleccion);
+
+                ciudadanosCenso = ciudadanosCenso.stream()
+                        .filter(c -> !candidatosSet.contains(c.numeroDocumento))
+                        .toList();
+
+                if (!ciudadanosCenso.isEmpty()) {
+                    usarCenso = true;
+                    log.info("Sorteo usara {} ciudadanos del censo electoral para eleccion={} (excluidos {} candidatos)",
+                            ciudadanosCenso.size(), eleccionId, candidatosSet.size());
+                }
+            } catch (Exception ex) {
+                log.warn("Error consultando censo electoral, usando generador deterministico: {}", ex.getMessage());
+            }
+        }
+
+        if (!usarCenso) {
+            log.info("Censo electoral no disponible o vacio, usando generador deterministico");
+        }
 
         Random rng = generador.crearRandom(
                 solicitud.getSeed(),
-                solicitud.getEleccionId(),
+                String.valueOf(eleccionId),
                 solicitud.getDepartamento(),
                 solicitud.getMunicipio()
         );
@@ -65,60 +111,121 @@ public class ServicioJurados implements IServicioJurados {
         Set<String> cedulasUsadas = new HashSet<>();
         List<RespuestaSorteoDto.RespuestaMesaDto> mesasDto = new ArrayList<>();
 
-        for (int i = 1; i <= solicitud.getNumeroMesas(); i++) {
-            String mesaId = UUID.randomUUID().toString();
-            String puestoId = "PUESTO-" + solicitud.getDepartamento().substring(0, 3).toUpperCase() + "-001";
+        if (usarCenso) {
+            List<CiudadanoCensoDto> poolCenso = new ArrayList<>(ciudadanosCenso);
+            Collections.shuffle(poolCenso, rng);
 
-            Mesa mesa = new Mesa();
-            mesa.setId(mesaId);
-            mesa.setNumero(i);
-            mesa.setPuestoId(puestoId);
-            mesa.setDepartamento(solicitud.getDepartamento());
-            mesa.setMunicipio(solicitud.getMunicipio());
-            repositorioMesa.guardar(mesa);
+            int indiceCenso = 0;
 
-            List<RespuestaJuradoDto> juradosDto = new ArrayList<>();
+            for (int i = 1; i <= solicitud.getNumeroMesas(); i++) {
+                String mesaId = UUID.randomUUID().toString();
+                String puestoId = "PUESTO-" + solicitud.getDepartamento().substring(0, Math.min(3, solicitud.getDepartamento().length())).toUpperCase() + "-001";
 
-            for (int r = 0; r < juradosPorMesa; r++) {
-                String cedula;
-                do {
-                    cedula = generador.generarCedula(rng);
-                } while (cedulasUsadas.contains(cedula));
-                cedulasUsadas.add(cedula);
+                Mesa mesa = new Mesa();
+                mesa.setId(mesaId);
+                mesa.setNumero(i);
+                mesa.setPuestoId(puestoId);
+                mesa.setDepartamento(solicitud.getDepartamento());
+                mesa.setMunicipio(solicitud.getMunicipio());
+                repositorioMesa.guardar(mesa);
 
-                Jurado jurado = new Jurado();
-                jurado.setCedula(cedula);
-                jurado.setNombre(generador.generarNombre(rng));
-                jurado.setApellido(generador.generarApellido(rng));
-                jurado.setMesaId(mesaId);
-                jurado.setPuestoId(puestoId);
-                jurado.setRol(ROLES.get(r % ROLES.size()));
-                repositorioJurado.guardar(jurado);
+                List<RespuestaJuradoDto> juradosDto = new ArrayList<>();
 
-                mesa.getJuradoIds().add(jurado.getId());
+                for (int r = 0; r < juradosPorMesa; r++) {
+                    CiudadanoCensoDto ciudadano;
+                    if (indiceCenso < poolCenso.size()) {
+                        ciudadano = poolCenso.get(indiceCenso);
+                        indiceCenso++;
+                    } else {
+                        int idx = rng.nextInt(poolCenso.size());
+                        ciudadano = poolCenso.get(idx);
+                    }
 
-                RespuestaJuradoDto jDto = toJuradoDto(jurado);
-                juradosDto.add(jDto);
+                    if (cedulasUsadas.contains(ciudadano.numeroDocumento)) {
+                        Jurado juradoFallback = generarJuradoSintetico(rng, mesaId, puestoId, cedulasUsadas, eleccionId);
+                        juradosDto.add(toJuradoDto(juradoFallback));
+                        continue;
+                    }
+                    cedulasUsadas.add(ciudadano.numeroDocumento);
 
-                servicioOutbox.emitir("JURADO_ASIGNADO", Map.of(
-                    "juradoId", jurado.getId(),
-                    "cedula", jurado.getCedula(),
-                    "nombre", jurado.getNombre() + " " + jurado.getApellido(),
-                    "mesaId", mesaId,
-                    "rol", jurado.getRol().name(),
-                    "puestoId", puestoId
-                ));
+                    String nombreCompleto = ciudadano.nombres;
+                    String[] partesNombre = nombreCompleto.split(" ", 2);
+                    String primerNombre = partesNombre[0];
+                    String apellidos = ciudadano.apellidos;
+
+                    Jurado jurado = new Jurado();
+                    jurado.setCedula(ciudadano.numeroDocumento);
+                    jurado.setNombre(primerNombre);
+                    jurado.setApellido(apellidos);
+                    jurado.setMesaId(mesaId);
+                    jurado.setPuestoId(puestoId);
+                    jurado.setRol(ROLES.get(r % ROLES.size()));
+                    jurado.setEleccionId(eleccionId);
+                    repositorioJurado.guardar(jurado);
+
+                    mesa.getJuradoIds().add(jurado.getId());
+                    juradosDto.add(toJuradoDto(jurado));
+
+                    servicioOutbox.emitir("JURADO_ASIGNADO", Map.of(
+                        "juradoId", jurado.getId(),
+                        "cedula", jurado.getCedula(),
+                        "nombre", jurado.getNombre() + " " + jurado.getApellido(),
+                        "mesaId", mesaId,
+                        "rol", jurado.getRol().name(),
+                        "puestoId", puestoId,
+                        "eleccionId", String.valueOf(eleccionId),
+                        "fuente", "CENSO_ELECTORAL"
+                    ));
+                }
+
+                RespuestaSorteoDto.RespuestaMesaDto mDto = new RespuestaSorteoDto.RespuestaMesaDto();
+                mDto.setId(mesaId);
+                mDto.setNumero(i);
+                mDto.setJurados(juradosDto);
+                mesasDto.add(mDto);
             }
+        } else {
+            for (int i = 1; i <= solicitud.getNumeroMesas(); i++) {
+                String mesaId = UUID.randomUUID().toString();
+                String puestoId = "PUESTO-" + solicitud.getDepartamento().substring(0, Math.min(3, solicitud.getDepartamento().length())).toUpperCase() + "-001";
 
-            RespuestaSorteoDto.RespuestaMesaDto mDto = new RespuestaSorteoDto.RespuestaMesaDto();
-            mDto.setId(mesaId);
-            mDto.setNumero(i);
-            mDto.setJurados(juradosDto);
-            mesasDto.add(mDto);
+                Mesa mesa = new Mesa();
+                mesa.setId(mesaId);
+                mesa.setNumero(i);
+                mesa.setPuestoId(puestoId);
+                mesa.setDepartamento(solicitud.getDepartamento());
+                mesa.setMunicipio(solicitud.getMunicipio());
+                repositorioMesa.guardar(mesa);
+
+                List<RespuestaJuradoDto> juradosDto = new ArrayList<>();
+
+                for (int r = 0; r < juradosPorMesa; r++) {
+                    Jurado jurado = generarJuradoSintetico(rng, mesaId, puestoId, cedulasUsadas, eleccionId);
+                    jurado.setRol(ROLES.get(r % ROLES.size()));
+                    juradosDto.add(toJuradoDto(jurado));
+
+                    servicioOutbox.emitir("JURADO_ASIGNADO", Map.of(
+                        "juradoId", jurado.getId(),
+                        "cedula", jurado.getCedula(),
+                        "nombre", jurado.getNombre() + " " + jurado.getApellido(),
+                        "mesaId", mesaId,
+                        "rol", jurado.getRol().name(),
+                        "puestoId", puestoId,
+                        "eleccionId", String.valueOf(eleccionId),
+                        "fuente", "GENERADOR_DETERMINISTICO"
+                    ));
+                }
+
+                RespuestaSorteoDto.RespuestaMesaDto mDto = new RespuestaSorteoDto.RespuestaMesaDto();
+                mDto.setId(mesaId);
+                mDto.setNumero(i);
+                mDto.setJurados(juradosDto);
+                mesasDto.add(mDto);
+            }
         }
 
         RespuestaSorteoDto respuesta = new RespuestaSorteoDto();
-        respuesta.setEleccionId(solicitud.getEleccionId());
+        respuesta.setEleccionId(eleccionId);
         respuesta.setDepartamento(solicitud.getDepartamento());
         respuesta.setMunicipio(solicitud.getMunicipio());
         respuesta.setSeed(solicitud.getSeed());
@@ -126,10 +233,35 @@ public class ServicioJurados implements IServicioJurados {
         respuesta.setTotalJurados((int) repositorioJurado.contar());
         respuesta.setMesas(mesasDto);
 
-        log.info("Sorteo completado: {} jurados asignados a {} mesas",
-                respuesta.getTotalJurados(), respuesta.getTotalMesas());
+        log.info("Sorteo completado: {} jurados asignados a {} mesas (fuente={})",
+                respuesta.getTotalJurados(), respuesta.getTotalMesas(),
+                usarCenso ? "CENSO_ELECTORAL" : "GENERADOR_DETERMINISTICO");
 
         return respuesta;
+    }
+
+    private Jurado generarJuradoSintetico(Random rng, String mesaId, String puestoId, Set<String> cedulasUsadas, Long eleccionId) {
+        String cedula;
+        do {
+            cedula = generador.generarCedula(rng);
+        } while (cedulasUsadas.contains(cedula));
+        cedulasUsadas.add(cedula);
+
+        Jurado jurado = new Jurado();
+        jurado.setCedula(cedula);
+        jurado.setNombre(generador.generarNombre(rng));
+        jurado.setApellido(generador.generarApellido(rng));
+        jurado.setMesaId(mesaId);
+        jurado.setPuestoId(puestoId);
+        jurado.setEleccionId(eleccionId);
+        repositorioJurado.guardar(jurado);
+
+        Mesa mesa = repositorioMesa.buscarPorId(mesaId);
+        if (mesa != null) {
+            mesa.getJuradoIds().add(jurado.getId());
+        }
+
+        return jurado;
     }
 
     @Override
@@ -167,6 +299,14 @@ public class ServicioJurados implements IServicioJurados {
     }
 
     @Override
+    public List<RespuestaJuradoDto> listarPorEleccion(Long eleccionId) {
+        return repositorioJurado.buscarPorEleccion(eleccionId)
+                .stream()
+                .map(this::toJuradoDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public void limpiar() {
         repositorioJurado.limpiar();
         repositorioMesa.limpiar();
@@ -194,6 +334,7 @@ public class ServicioJurados implements IServicioJurados {
         reemplazo.setPuestoId(original.getPuestoId());
         reemplazo.setRol(original.getRol());
         reemplazo.setReemplazaA(original.getId());
+        reemplazo.setEleccionId(original.getEleccionId());
         repositorioJurado.guardar(reemplazo);
 
         Mesa mesa = repositorioMesa.buscarPorId(original.getMesaId());
@@ -215,6 +356,7 @@ public class ServicioJurados implements IServicioJurados {
         dto.setRol(j.getRol().name());
         dto.setEstado(j.getEstado().name());
         dto.setReemplazaA(j.getReemplazaA());
+        dto.setEleccionId(j.getEleccionId());
         dto.setFechaCreacion(j.getFechaCreacion());
         return dto;
     }

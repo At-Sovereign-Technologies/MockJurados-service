@@ -14,6 +14,7 @@ public class RespuestaJuradoDto {
     private String rol;
     private String estado;
     private String reemplazaA;
+    private Long eleccionId;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     private Instant fechaCreacion;
@@ -44,6 +45,9 @@ public class RespuestaJuradoDto {
 
     public String getReemplazaA() { return reemplazaA; }
     public void setReemplazaA(String reemplazaA) { this.reemplazaA = reemplazaA; }
+
+    public Long getEleccionId() { return eleccionId; }
+    public void setEleccionId(Long eleccionId) { this.eleccionId = eleccionId; }
 
     public Instant getFechaCreacion() { return fechaCreacion; }
     public void setFechaCreacion(Instant fechaCreacion) { this.fechaCreacion = fechaCreacion; }

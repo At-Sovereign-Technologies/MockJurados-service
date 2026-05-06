@@ -18,6 +18,7 @@ public class Jurado {
     private EstadoJurado estado;
     private String reemplazaA;
     private Instant fechaCreacion;
+    private Long eleccionId;
 
     public Jurado() {
         this.id = UUID.randomUUID().toString();
@@ -54,4 +55,7 @@ public class Jurado {
 
     public Instant getFechaCreacion() { return fechaCreacion; }
     public void setFechaCreacion(Instant fechaCreacion) { this.fechaCreacion = fechaCreacion; }
+
+    public Long getEleccionId() { return eleccionId; }
+    public void setEleccionId(Long eleccionId) { this.eleccionId = eleccionId; }
 }

@@ -17,5 +17,7 @@ public interface IServicioJurados {
 
     List<RespuestaJuradoDto> listarTodos();
 
+    List<RespuestaJuradoDto> listarPorEleccion(Long eleccionId);
+
     void limpiar();
 }
