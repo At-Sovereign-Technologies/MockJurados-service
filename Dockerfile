@@ -7,6 +7,7 @@ COPY src src
 RUN chmod +x mvnw && ./mvnw clean package -DskipTests
 
 FROM eclipse-temurin:17-jre-alpine
+RUN apk add --no-cache curl
 RUN addgroup -S app && adduser -S app -G app
 USER app:app
 WORKDIR /app
